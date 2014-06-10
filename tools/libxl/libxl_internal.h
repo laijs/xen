@@ -2580,6 +2580,7 @@ struct libxl__remus_device_state {
 
     libxl_device_nic *nics;
     int num_nics;
+    libxl_device_disk *disks;
     int num_disks;
 
     /* for counting devices that have been handled */
