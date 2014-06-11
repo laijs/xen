@@ -7201,8 +7201,9 @@ int main_remus(int argc, char **argv)
     r_info.interval = 200;
     r_info.blackhole = 0;
     r_info.compression = 1;
+    r_info.netbuf = 1;
 
-    SWITCH_FOREACH_OPT(opt, "bui:s:e", NULL, "remus", 2) {
+    SWITCH_FOREACH_OPT(opt, "buni:s:N:e", NULL, "remus", 2) {
     case 'i':
         r_info.interval = atoi(optarg);
         break;
@@ -7211,6 +7212,12 @@ int main_remus(int argc, char **argv)
         break;
     case 'u':
         r_info.compression = 0;
+        break;
+    case 'n':
+        r_info.netbuf = 0;
+        break;
+    case 'N':
+        r_info.netbufscript = optarg;
         break;
     case 's':
         ssh_command = optarg;
@@ -7222,6 +7229,9 @@ int main_remus(int argc, char **argv)
 
     domid = find_domain(argv[optind]);
     host = argv[optind + 1];
+
+    if (!r_info.netbufscript)
+        r_info.netbufscript = default_remus_netbufscript;
 
     if (r_info.blackhole) {
         send_fd = open("/dev/null", O_RDWR, 0644);
@@ -7260,13 +7270,19 @@ int main_remus(int argc, char **argv)
     /* Point of no return */
     rc = libxl_domain_remus_start(ctx, &r_info, domid, send_fd, recv_fd, 0);
 
-    /* If we are here, it means backup has failed/domain suspend failed.
-     * Try to resume the domain and exit gracefully.
+    /* check if the domain exists. User may have xl destroyed the
+     * domain to force failover
+     */
+    if (libxl_domain_info(ctx, 0, domid)) {
+        fprintf(stderr, "Remus: Primary domain has been destroyed.\n");
+        close(send_fd);
+        return 0;
+    }
+
+    /* If we are here, it means remus setup/domain suspend/backup has
+     * failed. Try to resume the domain and exit gracefully.
      * TODO: Split-Brain check.
      */
-    fprintf(stderr, "remus sender: libxl_domain_suspend failed"
-            " (rc=%d)\n", rc);
-
     if (rc == ERROR_GUEST_TIMEDOUT)
         fprintf(stderr, "Failed to suspend domain at primary.\n");
     else {
