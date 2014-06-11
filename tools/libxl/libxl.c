@@ -777,6 +777,24 @@ int libxl_domain_remus_start(libxl_ctx *ctx, libxl_domain_remus_info *info,
 
     /* Convenience aliases */
     libxl__remus_state *const rs = &dss->rs;
+
+    /* Setup network buffering */
+    if (info->netbuf) {
+        if (!libxl__netbuffer_enabled(gc)) {
+            LOG(ERROR, "Remus: No support for network buffering");
+            goto out;
+        }
+
+        if (info->netbufscript) {
+            rs->netbufscript =
+                libxl__strdup(gc, info->netbufscript);
+        } else {
+            rs->netbufscript =
+                GCSPRINTF("%s/remus-netbuf-setup",
+                libxl__xen_script_dir_path());
+        }
+    }
+
     rs->ao = ao;
     rs->domid = domid;
     rs->saved_rc = 0;
