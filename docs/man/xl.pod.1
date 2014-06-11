@@ -431,7 +431,7 @@ Enable Remus HA for domain. By default B<xl> relies on ssh as a transport
 mechanism between the two hosts.
 
 N.B: Remus support in xl is still in experimental (proof-of-concept) phase.
-     There is no support for network or disk buffering at the moment.
+     Disk buffering support is limited to drbd disks.
 
 B<OPTIONS>
 
@@ -449,6 +449,15 @@ Generally useful for debugging.
 =item B<-u>
 
 Disable memory checkpoint compression.
+
+=item B<-n>
+
+Disable network output buffering.
+
+=item B<-N> I<netbufscript>
+
+Use <netbufscript> to setup network buffering instead of the instead of
+the default (/etc/xen/scripts/remus-netbuf-setup).
 
 =item B<-s> I<sshcommand>
 
