@@ -806,6 +806,9 @@ int libxl_domain_remus_start(libxl_ctx *ctx, libxl_domain_remus_info *info,
         }
     }
 
+    /* Setup disk buffering */
+    rs->diskbuf = info->diskbuf;
+
     rs->ao = ao;
     rs->domid = domid;
     rs->saved_rc = 0;
