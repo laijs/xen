@@ -18,7 +18,9 @@
 
 #include "libxl_internal.h"
 
+extern libxl__remus_device_ops remus_device_nic;
 static libxl__remus_device_ops *dev_ops[] = {
+    &remus_device_nic,
 };
 
 static void device_common_cb(libxl__egc *egc,
@@ -215,6 +217,13 @@ static void device_teardown_cb(libxl__egc *egc,
     rds->num_setuped--;
 
     if (rds->num_setuped == 0) {
+        /* clean nic */
+        for (i = 0; i < rds->num_nics; i++)
+            libxl_device_nic_dispose(&rds->nics[i]);
+        free(rds->nics);
+        rds->nics = NULL;
+        rds->num_nics = 0;
+
         /* clean device ops */
         for (i = 0; i < ARRAY_SIZE(dev_ops); i++) {
             ops = dev_ops[i];
@@ -224,7 +233,7 @@ static void device_teardown_cb(libxl__egc *egc,
     }
 }
 
-static __attribute__((unused)) void libxl__remus_device_init(libxl__egc *egc,
+static void libxl__remus_device_init(libxl__egc *egc,
                                      libxl__remus_device_state *rds,
                                      libxl__remus_device_kind kind,
                                      void *libxl_dev)
@@ -290,7 +299,9 @@ void libxl__remus_device_setup(libxl__egc *egc, libxl__remus_state *rs)
     rds->num_nics = 0;
     rds->num_disks = 0;
 
-    /* TBD: Remus setup - i.e. attach qdisc, enable disk buffering, etc */
+    /* TBD: Remus setup - i.e. enable disk buffering, etc */
+    if (rs->netbufscript)
+        rds->nics = libxl_device_nic_list(CTX, rs->domid, &rds->num_nics);
 
     if (rds->num_nics == 0 && rds->num_disks == 0)
         goto out;
@@ -298,6 +309,10 @@ void libxl__remus_device_setup(libxl__egc *egc, libxl__remus_state *rs)
     GCNEW_ARRAY(rds->dev, rds->num_nics + rds->num_disks);
 
     /* TBD: CALL libxl__remus_device_init to init remus devices */
+    for (i = 0; i < rds->num_nics; i++) {
+        libxl__remus_device_init(egc, rds,
+                                 LIBXL__REMUS_DEVICE_NIC, &rds->nics[i]);
+    }
 
     return;
 

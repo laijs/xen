@@ -2578,6 +2578,7 @@ struct libxl__remus_device_state {
     /* devices that have been setuped */
     libxl__remus_device **dev;
 
+    libxl_device_nic *nics;
     int num_nics;
     int num_disks;
 
@@ -2631,6 +2632,8 @@ struct libxl__remus_state {
     libxl__ao *ao;
     uint32_t domid;
     libxl__remus_callback *callback;
+    /* Script to setup/teardown network buffers */
+    const char *netbufscript;
 
     /* private */
     int saved_rc;

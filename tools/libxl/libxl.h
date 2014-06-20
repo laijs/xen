@@ -448,6 +448,19 @@ typedef struct libxl__ctx libxl_ctx;
 #define LIBXL_HAVE_DRIVER_DOMAIN_CREATION 1
 
 /*
+ * LIBXL_HAVE_REMUS_NETBUF 1
+ *
+ * If this is defined, then the libxl_domain_remus_info structure will
+ * have a boolean field (netbuf) and a string field (netbufscript).
+ *
+ * netbuf, if true, indicates that network buffering should be enabled.
+ *
+ * netbufscript, if set, indicates the path to the hotplug script to
+ * setup or teardown network buffers.
+ */
+#define LIBXL_HAVE_REMUS_NETBUF 1
+
+/*
  * LIBXL_HAVE_SIGCHLD_SELECTIVE_REAP
  *
  * If this is defined:
