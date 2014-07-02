@@ -310,6 +310,10 @@ struct libxl__gc {
     libxl_ctx *owner;
 };
 
+/* remus device ops specific structures start */
+typedef struct libxl__remus_netbuf_state libxl__remus_netbuf_state;
+/* remus device ops specific structures end */
+
 struct libxl__ctx {
     xentoollog_logger *lg;
     xc_interface *xch;
@@ -374,6 +378,9 @@ struct libxl__ctx {
     LIBXL_LIST_ENTRY(libxl_ctx) sigchld_users_entry;
 
     libxl_version_info version_info;
+
+    /* remus device ops specific structures */
+    libxl__remus_netbuf_state *rns;
 };
 
 typedef struct {
@@ -2576,6 +2583,7 @@ struct libxl__remus_device_state {
     /* devices that have been setuped */
     libxl__remus_device **dev;
 
+    libxl_device_nic *nics;
     int num_nics;
     int num_disks;
 
@@ -2631,6 +2639,8 @@ struct libxl__remus_state {
     libxl__ao *ao;
     uint32_t domid;
     libxl__remus_callback *callback;
+    /* Script to setup/teardown network buffers */
+    const char *netbufscript;
 
     /* private */
     int saved_rc;
