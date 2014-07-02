@@ -312,6 +312,7 @@ struct libxl__gc {
 
 /* remus device ops specific structures start */
 typedef struct libxl__remus_netbuf_state libxl__remus_netbuf_state;
+typedef struct libxl__remus_drbd_state libxl__remus_drbd_state;
 /* remus device ops specific structures end */
 
 struct libxl__ctx {
@@ -381,6 +382,7 @@ struct libxl__ctx {
 
     /* remus device ops specific structures */
     libxl__remus_netbuf_state *rns;
+    libxl__remus_drbd_state *drbd_state;
 };
 
 typedef struct {
@@ -2585,6 +2587,7 @@ struct libxl__remus_device_state {
 
     libxl_device_nic *nics;
     int num_nics;
+    libxl_device_disk *disks;
     int num_disks;
 
     /* for counting devices that have been handled */
