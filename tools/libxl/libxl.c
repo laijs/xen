@@ -733,6 +733,31 @@ out:
 static void remus_failover_cb(libxl__egc *egc,
                               libxl__domain_suspend_state *dss, int rc);
 
+static void libxl__remus_setup_failed(libxl__egc *egc,
+                                      libxl__remus_state *rs, int rc)
+{
+    STATE_AO_GC(rs->ao);
+    libxl__ao_complete(egc, ao, rc);
+}
+
+static void libxl__remus_setup_done(libxl__egc *egc,
+                                    libxl__remus_state *rs, int rc)
+{
+    libxl__domain_suspend_state *dss = CONTAINER_OF(rs, *dss, rs);
+    STATE_AO_GC(rs->ao);
+
+    if (!rc) {
+        libxl__domain_suspend(egc, dss);
+        return;
+    }
+
+    LOG(ERROR, "Remus: failed to setup device for guest with domid %u",
+        dss->domid);
+    rs->saved_rc = rc;
+    rs->callback = libxl__remus_setup_failed;
+    libxl__remus_device_teardown(egc, rs);
+}
+
 /* TODO: Explicit Checkpoint acknowledgements via recv_fd. */
 int libxl_domain_remus_start(libxl_ctx *ctx, libxl_domain_remus_info *info,
                              uint32_t domid, int send_fd, int recv_fd,
@@ -761,10 +786,15 @@ int libxl_domain_remus_start(libxl_ctx *ctx, libxl_domain_remus_info *info,
 
     assert(info);
 
-    /* TBD: Remus setup - i.e. attach qdisc, enable disk buffering, etc */
+    /* Convenience aliases */
+    libxl__remus_state *const rs = &dss->rs;
+    rs->ao = ao;
+    rs->domid = domid;
+    rs->saved_rc = 0;
+    rs->callback = libxl__remus_setup_done;
 
     /* Point of no return */
-    libxl__domain_suspend(egc, dss);
+    libxl__remus_device_setup(egc, rs);
     return AO_INPROGRESS;
 
  out:
