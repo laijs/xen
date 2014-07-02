@@ -24,6 +24,7 @@ XEN_SCRIPTS += xen-hotplug-cleanup
 XEN_SCRIPTS += external-device-migrate
 XEN_SCRIPTS += vscsi
 XEN_SCRIPTS += block-iscsi
+XEN_SCRIPTS += block-drbd-probe
 XEN_SCRIPTS += $(XEN_SCRIPTS-y)
 
 XEN_SCRIPT_DATA = xen-script-common.sh locking.sh logging.sh

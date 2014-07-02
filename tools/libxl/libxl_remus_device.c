@@ -18,8 +18,10 @@
 #include "libxl_internal.h"
 
 extern const libxl__remus_device_ops remus_device_nic;
+extern const libxl__remus_device_ops remus_device_drbd_disk;
 static const libxl__remus_device_ops *dev_ops[] = {
     &remus_device_nic,
+    &remus_device_drbd_disk,
 };
 
 /*----- checkpointing APIs -----*/
@@ -246,6 +248,13 @@ static void device_teardown_cb(libxl__egc *egc,
         rds->nics = NULL;
         rds->num_nics = 0;
 
+        /* clean disk */
+        for (i = 0; i < rds->num_disks; i++)
+            libxl_device_disk_dispose(&rds->disks[i]);
+        free(rds->disks);
+        rds->disks = NULL;
+        rds->num_disks = 0;
+
         destroy_device_ops(rs);
         rs->callback(egc, rs, rs->saved_rc);
     }
@@ -343,19 +352,24 @@ void libxl__remus_device_setup(libxl__egc *egc, libxl__remus_state *rs)
     rds->num_nics = 0;
     rds->num_disks = 0;
 
-    /* TBD: Remus setup - i.e. enable disk buffering, etc */
     if (rs->netbufscript)
         rds->nics = libxl_device_nic_list(CTX, rs->domid, &rds->num_nics);
+
+    rds->disks = libxl_device_disk_list(CTX, rs->domid, &rds->num_disks);
 
     if (rds->num_nics == 0 && rds->num_disks == 0)
         goto out;
 
     GCNEW_ARRAY(rds->dev, rds->num_nics + rds->num_disks);
 
-    /* TBD: CALL libxl__remus_device_init to init remus devices */
     for (i = 0; i < rds->num_nics; i++) {
         libxl__remus_device_init(egc, rds,
                                  LIBXL__REMUS_DEVICE_NIC, &rds->nics[i]);
+    }
+
+    for (i = 0; i < rds->num_disks; i++) {
+        libxl__remus_device_init(egc, rds,
+                                 LIBXL__REMUS_DEVICE_DISK, &rds->disks[i]);
     }
 
     return;
