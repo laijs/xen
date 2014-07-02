@@ -2644,6 +2644,7 @@ struct libxl__remus_state {
     libxl__remus_callback *callback;
     /* Script to setup/teardown network buffers */
     const char *netbufscript;
+    bool diskbuf;
 
     /* private */
     int saved_rc;
