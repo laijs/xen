@@ -66,12 +66,13 @@ static void device_teardown_cb(libxl__egc *egc,
 
 /* remus device setup and teardown */
 
-static __attribute__((unused)) void libxl__remus_device_init(libxl__egc *egc,
+static void libxl__remus_device_init(libxl__egc *egc,
                                      libxl__remus_device_state *rds,
                                      libxl__remus_device_kind kind,
                                      void *libxl_dev);
 void libxl__remus_devices_setup(libxl__egc *egc, libxl__remus_device_state *rds)
 {
+    int i;
     STATE_AO_GC(rds->ao);
 
     if (!rds->ops[0])
@@ -85,7 +86,9 @@ void libxl__remus_devices_setup(libxl__egc *egc, libxl__remus_device_state *rds)
     rds->num_nics = 0;
     rds->num_disks = 0;
 
-    /* TBD: Remus setup - i.e. attach qdisc, enable disk buffering, etc */
+    /* TBD: Remus setup - i.e. enable disk buffering, etc */
+    if (rds->netbufscript)
+        rds->nics = libxl_device_nic_list(CTX, rds->domid, &rds->num_nics);
 
     if (rds->num_nics == 0 && rds->num_disks == 0)
         goto out;
@@ -93,6 +96,10 @@ void libxl__remus_devices_setup(libxl__egc *egc, libxl__remus_device_state *rds)
     GCNEW_ARRAY(rds->dev, rds->num_nics + rds->num_disks);
 
     /* TBD: CALL libxl__remus_device_init to init remus devices */
+    for (i = 0; i < rds->num_nics; i++) {
+        libxl__remus_device_init(egc, rds,
+                                 LIBXL__REMUS_DEVICE_NIC, &rds->nics[i]);
+    }
 
     return;
 
@@ -101,7 +108,7 @@ out:
     return;
 }
 
-static __attribute__((unused)) void libxl__remus_device_init(libxl__egc *egc,
+static void libxl__remus_device_init(libxl__egc *egc,
                                      libxl__remus_device_state *rds,
                                      libxl__remus_device_kind kind,
                                      void *libxl_dev)
@@ -254,6 +261,7 @@ static void device_teardown_cb(libxl__egc *egc,
                                libxl__remus_device *dev,
                                int rc)
 {
+    int i;
     libxl__remus_device_state *const rds = dev->rds;
 
     STATE_AO_GC(rds->ao);
@@ -266,6 +274,13 @@ static void device_teardown_cb(libxl__egc *egc,
     rds->num_set_up--;
 
     if (rds->num_set_up == 0) {
+        /* clean nic */
+        for (i = 0; i < rds->num_nics; i++)
+            libxl_device_nic_dispose(&rds->nics[i]);
+        free(rds->nics);
+        rds->nics = NULL;
+        rds->num_nics = 0;
+
         destroy_device_subkind(rds);
         rds->callback(egc, rds, rds->saved_rc);
     }

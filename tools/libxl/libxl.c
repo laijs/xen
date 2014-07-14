@@ -789,6 +789,7 @@ static void remus_failover_cb(libxl__egc *egc,
                               libxl__domain_suspend_state *dss, int rc);
 
 static const libxl__remus_device_subkind_ops *remus_ops[] = {
+    &remus_device_nic,
     NULL,
 };
 
@@ -822,6 +823,23 @@ int libxl_domain_remus_start(libxl_ctx *ctx, libxl_domain_remus_info *info,
 
     /* Convenience aliases */
     libxl__remus_device_state *const rds = &dss->rds;
+
+    if (info->netbuf) {
+        if (!libxl__netbuffer_enabled(gc)) {
+            LOG(ERROR, "Remus: No support for network buffering");
+            goto out;
+        }
+
+        if (info->netbufscript) {
+            rds->netbufscript =
+                libxl__strdup(gc, info->netbufscript);
+        } else {
+            rds->netbufscript =
+                GCSPRINTF("%s/remus-netbuf-setup",
+                libxl__xen_script_dir_path());
+        }
+    }
+
     rds->ao = ao;
     rds->egc = egc;
     rds->domid = domid;

@@ -139,6 +139,7 @@ typedef struct libxl__ao libxl__ao;
 typedef struct libxl__aop_occurred libxl__aop_occurred;
 typedef struct libxl__osevent_hook_nexus libxl__osevent_hook_nexus;
 typedef struct libxl__osevent_hook_nexi libxl__osevent_hook_nexi;
+typedef struct libxl__remus_netbuf_state libxl__remus_netbuf_state;
 
 _hidden void libxl__alloc_failed(libxl_ctx *, const char *func,
                          size_t nmemb, size_t size) __attribute__((noreturn));
@@ -374,6 +375,8 @@ struct libxl__ctx {
     LIBXL_LIST_ENTRY(libxl_ctx) sigchld_users_entry;
 
     libxl_version_info version_info;
+
+    libxl__remus_netbuf_state *rns;
 };
 
 typedef struct {
@@ -2576,12 +2579,14 @@ struct libxl__remus_device_state {
     libxl__remus_callback *callback;
     /* the last ops must be NULL */
     const libxl__remus_device_subkind_ops **ops;
+    const char *netbufscript;
 
     /* private */
     /* devices that have been set up */
     int saved_rc;
     libxl__remus_device **dev;
 
+    libxl_device_nic *nics;
     int num_nics;
     int num_disks;
 
@@ -2639,6 +2644,9 @@ _hidden void libxl__remus_devices_preresume(libxl__egc *egc,
                                             libxl__remus_device_state *rds);
 _hidden void libxl__remus_devices_commit(libxl__egc *egc,
                                          libxl__remus_device_state *rds);
+
+extern const libxl__remus_device_subkind_ops remus_device_nic;
+
 _hidden int libxl__netbuffer_enabled(libxl__gc *gc);
 
 /*----- Domain suspend (save) state structure -----*/
