@@ -2582,6 +2582,7 @@ struct libxl__remus_device_state {
     /* the last ops must be NULL */
     const libxl__remus_device_subkind_ops **ops;
     const char *netbufscript;
+    bool diskbuf;
 
     /* private */
     /* devices that have been set up */

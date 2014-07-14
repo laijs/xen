@@ -89,7 +89,8 @@ void libxl__remus_devices_setup(libxl__egc *egc, libxl__remus_device_state *rds)
     if (rds->netbufscript)
         rds->nics = libxl_device_nic_list(CTX, rds->domid, &rds->num_nics);
 
-    rds->disks = libxl_device_disk_list(CTX, rds->domid, &rds->num_disks);
+    if (rds->diskbuf)
+        rds->disks = libxl_device_disk_list(CTX, rds->domid, &rds->num_disks);
 
     if (rds->num_nics == 0 && rds->num_disks == 0)
         goto out;

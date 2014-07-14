@@ -844,6 +844,7 @@ int libxl_domain_remus_start(libxl_ctx *ctx, libxl_domain_remus_info *info,
     rds->ao = ao;
     rds->egc = egc;
     rds->domid = domid;
+    rds->diskbuf = info->diskbuf;
     rds->callback = libxl__remus_setup_done;
     rds->ops = remus_ops;
 
