@@ -798,8 +798,6 @@ static void domain_suspend_done(libxl__egc *egc,
                         libxl__domain_suspend_state *dss, int rc);
 static void domain_suspend_callback_common_done(libxl__egc *egc,
                                 libxl__domain_suspend_state *dss, int ok);
-static void remus_domain_suspend_callback_common_done(libxl__egc *egc,
-                                libxl__domain_suspend_state *dss, int ok);
 
 /*----- complicated callback, called by xc_domain_save -----*/
 
@@ -1461,6 +1459,14 @@ static void domain_suspend_callback_common_done(libxl__egc *egc,
 }
 
 /*----- remus callbacks -----*/
+static void remus_domain_suspend_callback_common_done(libxl__egc *egc,
+                                libxl__domain_suspend_state *dss, int ok);
+static void remus_device_postsuspend_cb(libxl__egc *egc,
+                                        libxl__remus_device_state *rds,
+                                        int rc);
+static void remus_device_preresume_cb(libxl__egc *egc,
+                                      libxl__remus_device_state *rds,
+                                      int rc);
 
 static void libxl__remus_domain_suspend_callback(void *data)
 {
@@ -1475,32 +1481,67 @@ static void libxl__remus_domain_suspend_callback(void *data)
 static void remus_domain_suspend_callback_common_done(libxl__egc *egc,
                                 libxl__domain_suspend_state *dss, int ok)
 {
-    /* REMUS TODO: Issue disk and network checkpoint reqs. */
+    if (!ok)
+        goto out;
+
+    libxl__remus_device_state *const rds = &dss->rds;
+    rds->callback = remus_device_postsuspend_cb;
+    libxl__remus_devices_postsuspend(egc, rds);
+    return;
+
+out:
+    libxl__xc_domain_saverestore_async_callback_done(egc, &dss->shs, ok);
+}
+
+static void remus_device_postsuspend_cb(libxl__egc *egc,
+                                        libxl__remus_device_state *rds,
+                                        int rc)
+{
+    int ok = 0;
+    libxl__domain_suspend_state *dss = CONTAINER_OF(rds, *dss, rds);
+
+    if (!rc)
+        ok = 1;
     libxl__xc_domain_saverestore_async_callback_done(egc, &dss->shs, ok);
 }
 
 static void libxl__remus_domain_resume_callback(void *data)
 {
-    int ok = 0;
     libxl__save_helper_state *shs = data;
     libxl__egc *egc = shs->egc;
     libxl__domain_suspend_state *dss = CONTAINER_OF(shs, *dss, shs);
     STATE_AO_GC(dss->ao);
 
-    /* Resumes the domain and the device model */
-    if (libxl__domain_resume(gc, dss->domid, /* Fast Suspend */1))
-        goto out;
+    libxl__remus_device_state *const rds = &dss->rds;
+    rds->callback = remus_device_preresume_cb;
+    libxl__remus_devices_preresume(egc, rds);
+}
 
-    /* REMUS TODO: Deal with disk. Start a new network output buffer */
-    ok = 1;
-out:
-    libxl__xc_domain_saverestore_async_callback_done(egc, shs, ok);
+static void remus_device_preresume_cb(libxl__egc *egc,
+                                      libxl__remus_device_state *rds,
+                                      int rc)
+{
+    int ok = 0;
+    libxl__domain_suspend_state *dss = CONTAINER_OF(rds, *dss, rds);
+    STATE_AO_GC(dss->ao);
+
+    if (!rc) {
+        /* Resumes the domain and the device model */
+        if (!libxl__domain_resume(gc, dss->domid, /* Fast Suspend */1))
+            ok = 1;
+    }
+    libxl__xc_domain_saverestore_async_callback_done(egc, &dss->shs, ok);
 }
 
 /*----- remus asynchronous checkpoint callback -----*/
 
 static void remus_checkpoint_dm_saved(libxl__egc *egc,
                                       libxl__domain_suspend_state *dss, int rc);
+static void remus_device_commit_cb(libxl__egc *egc,
+                                   libxl__remus_device_state *rds,
+                                   int rc);
+static void remus_next_checkpoint(libxl__egc *egc, libxl__ev_time *ev,
+                                  const struct timeval *requested_abs);
 
 static void libxl__remus_domain_checkpoint_callback(void *data)
 {
@@ -1520,10 +1561,63 @@ static void libxl__remus_domain_checkpoint_callback(void *data)
 static void remus_checkpoint_dm_saved(libxl__egc *egc,
                                       libxl__domain_suspend_state *dss, int rc)
 {
-    /* REMUS TODO: Wait for disk and memory ack, release network buffer */
-    /* REMUS TODO: make this asynchronous */
-    assert(!rc); /* REMUS TODO handle this error properly */
-    usleep(dss->interval * 1000);
+    /* Convenience aliases */
+    libxl__remus_device_state *const rds = &dss->rds;
+
+    STATE_AO_GC(dss->ao);
+
+    if (rc) {
+        LOG(ERROR, "Failed to save device model. Terminating Remus..");
+        goto out;
+    }
+
+    rds->callback = remus_device_commit_cb;
+    libxl__remus_devices_commit(egc, rds);
+
+    return;
+
+out:
+    libxl__xc_domain_saverestore_async_callback_done(egc, &dss->shs, 0);
+}
+
+static void remus_device_commit_cb(libxl__egc *egc,
+                                   libxl__remus_device_state *rds,
+                                   int rc)
+{
+    libxl__domain_suspend_state *dss = CONTAINER_OF(rds, *dss, rds);
+
+    STATE_AO_GC(dss->ao);
+
+    if (rc) {
+        LOG(ERROR, "Failed to do device commit op."
+            " Terminating Remus..");
+        goto out;
+    } else {
+        /* Set checkpoint interval timeout */
+        rc = libxl__ev_time_register_rel(gc, &dss->checkpoint_timeout,
+                                         remus_next_checkpoint,
+                                         dss->interval);
+        if (rc) {
+            LOG(ERROR, "unable to register timeout for next epoch."
+                " Terminating Remus..");
+            goto out;
+        }
+    }
+    return;
+
+out:
+    libxl__xc_domain_saverestore_async_callback_done(egc, &dss->shs, 0);
+}
+
+static void remus_next_checkpoint(libxl__egc *egc, libxl__ev_time *ev,
+                                  const struct timeval *requested_abs)
+{
+    libxl__domain_suspend_state *dss =
+                            CONTAINER_OF(ev, *dss, checkpoint_timeout);
+
+    STATE_AO_GC(dss->ao);
+
+    libxl__ev_time_deregister(gc, &dss->checkpoint_timeout);
     libxl__xc_domain_saverestore_async_callback_done(egc, &dss->shs, 1);
 }
 
@@ -1738,6 +1832,9 @@ static void save_device_model_datacopier_done(libxl__egc *egc,
     dss->save_dm_callback(egc, dss, our_rc);
 }
 
+static void libxl__remus_teardown_done(libxl__egc *egc,
+                                       libxl__remus_device_state *rds,
+                                       int rc);
 static void domain_suspend_done(libxl__egc *egc,
                         libxl__domain_suspend_state *dss, int rc)
 {
@@ -1751,6 +1848,34 @@ static void domain_suspend_done(libxl__egc *egc,
     if (dss->guest_evtchn.port > 0)
         xc_suspend_evtchn_release(CTX->xch, CTX->xce, domid,
                            dss->guest_evtchn.port, &dss->guest_evtchn_lockfd);
+
+    if (dss->remus) {
+        /*
+         * With Remus, if we reach this point, it means either
+         * backup died or some network error occurred preventing us
+         * from sending checkpoints. Teardown the network buffers and
+         * release netlink resources.  This is an async op.
+         */
+        LOGE(WARN, "Remus: Domain suspend terminated with rc %d,"
+             " teardown Remus devices...", rc);
+        dss->rds.callback = libxl__remus_teardown_done;
+        libxl__remus_devices_teardown(egc, &dss->rds);
+        return;
+    }
+
+    dss->callback(egc, dss, rc);
+}
+
+static void libxl__remus_teardown_done(libxl__egc *egc,
+                                       libxl__remus_device_state *rds,
+                                       int rc)
+{
+    libxl__domain_suspend_state *dss = CONTAINER_OF(rds, *dss, rds);
+    STATE_AO_GC(dss->ao);
+
+    if (rc)
+        LOG(ERROR, "Remus: failed to teardown device for guest with domid %u,"
+            " rc %d", dss->domid, rc);
 
     dss->callback(egc, dss, rc);
 }
