@@ -790,6 +790,7 @@ static void remus_failover_cb(libxl__egc *egc,
 
 static const libxl__remus_device_subkind_ops *remus_ops[] = {
     &remus_device_nic,
+    &remus_device_drbd_disk,
     NULL,
 };
 

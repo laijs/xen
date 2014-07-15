@@ -86,19 +86,24 @@ void libxl__remus_devices_setup(libxl__egc *egc, libxl__remus_device_state *rds)
     rds->num_nics = 0;
     rds->num_disks = 0;
 
-    /* TBD: Remus setup - i.e. enable disk buffering, etc */
     if (rds->netbufscript)
         rds->nics = libxl_device_nic_list(CTX, rds->domid, &rds->num_nics);
+
+    rds->disks = libxl_device_disk_list(CTX, rds->domid, &rds->num_disks);
 
     if (rds->num_nics == 0 && rds->num_disks == 0)
         goto out;
 
     GCNEW_ARRAY(rds->dev, rds->num_nics + rds->num_disks);
 
-    /* TBD: CALL libxl__remus_device_init to init remus devices */
     for (i = 0; i < rds->num_nics; i++) {
         libxl__remus_device_init(egc, rds,
                                  LIBXL__REMUS_DEVICE_NIC, &rds->nics[i]);
+    }
+
+    for (i = 0; i < rds->num_disks; i++) {
+        libxl__remus_device_init(egc, rds,
+                                 LIBXL__REMUS_DEVICE_DISK, &rds->disks[i]);
     }
 
     return;
@@ -280,6 +285,13 @@ static void device_teardown_cb(libxl__egc *egc,
         free(rds->nics);
         rds->nics = NULL;
         rds->num_nics = 0;
+
+        /* clean disk */
+        for (i = 0; i < rds->num_disks; i++)
+            libxl_device_disk_dispose(&rds->disks[i]);
+        free(rds->disks);
+        rds->disks = NULL;
+        rds->num_disks = 0;
 
         destroy_device_subkind(rds);
         rds->callback(egc, rds, rds->saved_rc);

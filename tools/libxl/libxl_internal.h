@@ -140,6 +140,7 @@ typedef struct libxl__aop_occurred libxl__aop_occurred;
 typedef struct libxl__osevent_hook_nexus libxl__osevent_hook_nexus;
 typedef struct libxl__osevent_hook_nexi libxl__osevent_hook_nexi;
 typedef struct libxl__remus_netbuf_state libxl__remus_netbuf_state;
+typedef struct libxl__remus_drbd_state libxl__remus_drbd_state;
 
 _hidden void libxl__alloc_failed(libxl_ctx *, const char *func,
                          size_t nmemb, size_t size) __attribute__((noreturn));
@@ -377,6 +378,7 @@ struct libxl__ctx {
     libxl_version_info version_info;
 
     libxl__remus_netbuf_state *rns;
+    libxl__remus_drbd_state *drbd_state;
 };
 
 typedef struct {
@@ -2588,6 +2590,7 @@ struct libxl__remus_device_state {
 
     libxl_device_nic *nics;
     int num_nics;
+    libxl_device_disk *disks;
     int num_disks;
 
     /* for counting devices that have been handled */
@@ -2646,6 +2649,7 @@ _hidden void libxl__remus_devices_commit(libxl__egc *egc,
                                          libxl__remus_device_state *rds);
 
 extern const libxl__remus_device_subkind_ops remus_device_nic;
+extern const libxl__remus_device_subkind_ops remus_device_drbd_disk;
 
 _hidden int libxl__netbuffer_enabled(libxl__gc *gc);
 
