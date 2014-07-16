@@ -2470,6 +2470,195 @@ typedef struct libxl__save_helper_state {
                       * marshalling and xc callback functions */
 } libxl__save_helper_state;
 
+/*----- remus device related state structure -----*/
+/* remus device is an abstract layer of remus devices(nic, disk,
+ * etc).It provides the following APIs for libxl:
+ *   >libxl__remus_devices_setup
+ *     setup remus devices, like attach qdisc, enable disk buffering, etc
+ *   >libxl__remus_devices_teardown
+ *     teardown devices
+ *   >libxl__remus_devices_postsuspend
+ *   >libxl__remus_devices_preresume
+ *   >libxl__remus_devices_commit
+ *     above three are for checkpoint.
+ * through remus device layer, the remus execution flow will be like
+ * this:
+ * xl remus -> remus device setup
+ *               |-> remus checkpoint(postsuspend, preresume, commit)
+ *                     ...
+ *                      |-> remus device teardown, failover or abort
+ * the remus device layer provides an interface
+ *   libxl__remus_device_subkind_ops
+ * which a remus device must implement. the whole remus structure:
+ *                           |remus|
+ *                              |
+ *                       |remus device|
+ *                              |
+ *               |nic| |drbd disks| |qemu disks| ...
+ * a device(nic, drbd disks, qemu disks, etc) must implement
+ * libxl__remus_device_subkind_ops to support remus.
+ */
+
+typedef enum libxl__remus_device_kind {
+    LIBXL__REMUS_DEVICE_NIC  = (1 << 0),
+    LIBXL__REMUS_DEVICE_DISK = (1 << 1),
+} libxl__remus_device_kind;
+
+typedef struct libxl__remus_device libxl__remus_device;
+typedef struct libxl__remus_device_state libxl__remus_device_state;
+typedef struct libxl__remus_device_subkind_ops libxl__remus_device_subkind_ops;
+
+/*
+ * These operations are provided by a device subkind and
+ * called by the main remus code. Functions must be
+ * implemented unless otherwise stated.
+ * Many of these functions are asynchronous. They call
+ * dev->callback when done. The actual implementations may be
+ * synchronously and call dev->callback directly (as the last
+ * thing they do).
+ */
+struct libxl__remus_device_subkind_ops {
+    /* the device kind this ops belongs to... */
+    libxl__remus_device_kind kind;
+
+    /*
+     * init() and cleanup() relate to the subkind-specific state in
+     * the libxl ctx, not to any specific device.
+     * Synchronous. cleanup() cannot fail.
+     */
+    int (*init)(libxl__remus_device_state *rds);
+    void (*cleanup)(libxl__remus_device_state *rds);
+
+    /*
+     * Checkpoint operations. May be NULL, meaning the op is not
+     * implemented and the caller should treat them as a no-op (and do
+     * nothing when checkpointing).
+     * Asynchronous.
+     */
+
+    void (*postsuspend)(libxl__remus_device *dev);
+    void (*preresume)(libxl__remus_device *dev);
+    void (*commit)(libxl__remus_device *dev);
+
+    /*
+     * Determines whether the subkind matches the specific device.
+     * init() will have been called for the subkind. If match()
+     * succeeds, the device will then be managed with this set of
+     * subkind operations.
+     * Asynchronous. Yields 0 if the device matches, or
+     * REMUS_DEVOPS_NOT_MATCH if it does not; any other rc indicates
+     * failure.
+     * May be NULL, meaning this subkind matches any device.
+     */
+    void (*match)(libxl__remus_device *dev);
+
+    /*
+     * setup() and teardown() are refer to the actual remus device.
+     * Asynchronous.
+     * teardown is called even if setup fails.
+     */
+    void (*setup)(libxl__remus_device *dev);
+    void (*teardown)(libxl__remus_device *dev);
+};
+
+typedef void libxl__remus_callback(libxl__egc *,
+                                   libxl__remus_device_state *, int rc);
+
+/*
+ * State associated with a remus invocation, including parameters
+ * passed to the remus abstract device layer by the remus
+ * save/restore machinery.
+ */
+struct libxl__remus_device_state {
+    /*---- must be set by caller of libxl__remus_device_(setup|teardown) ----*/
+
+    libxl__ao *ao;
+    libxl__egc *egc;
+    uint32_t domid;
+    libxl__remus_callback *callback;
+    /* the last ops must be NULL */
+    const libxl__remus_device_subkind_ops **ops;
+    int device_kind_flags;
+
+    /*----- private -----*/
+
+    int saved_rc;
+    /* number of devices which have been handled */
+    int num_devices;
+    int num_set_up;
+    /*
+     * this array is allocated before setup the remus devices by the
+     * remus abstract layer.
+     * the allocated size of this array is the total number of libxl
+     * nic devices and disk devices(num_nics + num_disks).
+     * this array stores the remus devices which have been set up,
+     * so the actual size of this array is num_set_up.
+     * we add devices that have been set up to the array no matter
+     * the setup process succeed or failed because we need to ensure
+     * the device been teardown while setup failed. If any of the
+     * device setup failed, we will quit remus, but before we exit,
+     * we will teardown the devices that have been added to **dev.
+     */
+    libxl__remus_device **dev;
+
+    libxl_device_nic *nics;
+    int num_nics;
+    libxl_device_disk *disks;
+    int num_disks;
+};
+
+typedef void libxl__remus_device_callback(libxl__egc *,
+                                          libxl__remus_device *,
+                                          int rc);
+
+/*
+ * Information about a single device being handled by remus.
+ * Allocated by the remus abstract layer.
+ */
+struct libxl__remus_device {
+    /*----- shared between abstract and concrete layers -----*/
+    /*----- all set by remus device abstruct layer -----*/
+
+    /* libxl__device_* which this remus device related to */
+    const void *backend_dev;
+    libxl__remus_device_kind kind;
+    libxl__remus_device_state *rds;
+    libxl__remus_device_callback *callback;
+
+    /*----- private for abstract layer only -----*/
+
+    /*
+     * Control and state variables for the asynchronous callback
+     * based loops which iterate over device subkinds, and over
+     * individual devices.
+     */
+    int ops_index;
+    const libxl__remus_device_subkind_ops *ops;
+
+    /*----- private for concrete (device-specific) layer -----*/
+
+    /* concrete device's private data */
+    void *concrete_data;
+    libxl__async_exec_state aes;
+    /*
+     * for async func calls, in the implementation of device ops, we
+     * may use fork to do async ops. this is owned by device-specific
+     * ops methods
+     */
+    libxl__ev_child child;
+};
+
+/* the following 5 APIs are async ops, call rds->callback when done */
+_hidden void libxl__remus_devices_setup(libxl__egc *egc,
+                                        libxl__remus_device_state *rds);
+_hidden void libxl__remus_devices_teardown(libxl__egc *egc,
+                                           libxl__remus_device_state *rds);
+_hidden void libxl__remus_devices_postsuspend(libxl__egc *egc,
+                                              libxl__remus_device_state *rds);
+_hidden void libxl__remus_devices_preresume(libxl__egc *egc,
+                                            libxl__remus_device_state *rds);
+_hidden void libxl__remus_devices_commit(libxl__egc *egc,
+                                         libxl__remus_device_state *rds);
 _hidden int libxl__netbuffer_enabled(libxl__gc *gc);
 
 /*----- Domain suspend (save) state structure -----*/
@@ -2510,6 +2699,8 @@ struct libxl__domain_suspend_state {
     libxl__ev_xswatch guest_watch;
     libxl__ev_time guest_timeout;
     const char *dm_savefile;
+    libxl__remus_device_state rds;
+    libxl__ev_time checkpoint_timeout; /* used for Remus checkpoint */
     int interval; /* checkpoint interval (for Remus) */
     libxl__save_helper_state shs;
     libxl__logdirty_switch logdirty;
