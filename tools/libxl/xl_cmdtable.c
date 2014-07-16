@@ -490,6 +490,7 @@ struct cmd_spec cmd_table[] = {
       "-n                      Disable network output buffering.\n"
       "-N <netbufscript>       Use netbufscript to setup network buffering instead of the\n"
       "                        instead of the default (/etc/xen/scripts/remus-netbuf-setup).\n"
+      "-d                      Disable disk buffering.\n"
       "-s <sshcommand>         Use <sshcommand> instead of ssh.  String will be passed\n"
       "                        to sh. If empty, run <host> instead of \n"
       "                        ssh <host> xl migrate-receive -r [-e]\n"

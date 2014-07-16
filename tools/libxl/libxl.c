@@ -832,7 +832,9 @@ int libxl_domain_remus_start(libxl_ctx *ctx, libxl_domain_remus_info *info,
         }
         rds->device_kind_flags |= LIBXL__REMUS_DEVICE_NIC;
     }
-    rds->device_kind_flags |= LIBXL__REMUS_DEVICE_DISK;
+
+    if (info->diskbuf)
+        rds->device_kind_flags |= LIBXL__REMUS_DEVICE_DISK;
 
     rds->ao = ao;
     rds->egc = egc;

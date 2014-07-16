@@ -7176,8 +7176,9 @@ int main_remus(int argc, char **argv)
     r_info.blackhole = 0;
     r_info.compression = 1;
     r_info.netbuf = 1;
+    r_info.diskbuf = 1;
 
-    SWITCH_FOREACH_OPT(opt, "buni:s:N:e", NULL, "remus", 2) {
+    SWITCH_FOREACH_OPT(opt, "bundi:s:N:e", NULL, "remus", 2) {
     case 'i':
         r_info.interval = atoi(optarg);
         break;
@@ -7192,6 +7193,9 @@ int main_remus(int argc, char **argv)
         break;
     case 'N':
         r_info.netbufscript = optarg;
+        break;
+    case 'd':
+        r_info.diskbuf = 0;
         break;
     case 's':
         ssh_command = optarg;
